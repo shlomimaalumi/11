@@ -153,7 +153,6 @@ class CompilationEngine:
         else:
             self.compile_function_and_method()
         self.compile_statements()
-        self.print_symbol()  # }
 
     def compile_parameter_list(self) -> None:
         """Compiles a (possibly empty) parameter list, not including the
@@ -261,13 +260,15 @@ class CompilationEngine:
 
     def compile_if(self) -> None:
         """Compiles a if statement, possibly with a trailing else clause."""
+        global label_ind
         # if (expression) {statments} (else {statements})?
         self.open_main_xml("ifStatement")
         self.print_keyword_and_advance()  # if
         self.print_symbol_and_advance()  # (
         self.compile_expression()  # expressions
-        self.print_symbol_and_advance()  # )
-        self.print_symbol_and_advance()  # {
+        self.write("neg")
+        self.vm.write_if(f"L{label_ind}")
+        self.double_advance()  # ) {
         self.compile_statements()  # statements
         self.print_symbol_and_advance()  # }
         if self.get_token() == "else":
