@@ -170,7 +170,7 @@ class JackTokenizer:
         self.get_by_lines(input_stream)
         # self.tokens_type_list = []
         self.get_by_tokens()
-        #self.connect_strings()
+        # self.connect_strings()
 
     def has_more_tokens(self) -> bool:
         """Do we have more tokens in the input?
@@ -333,7 +333,7 @@ class JackTokenizer:
         #                 else: self.file.append(line)
         pattern = r'/\*.*?\*/'
         is_comment = False
-        new_list=[]
+        new_list = []
         for line in self.file:
             line = line.strip()
             if '"' not in line:
@@ -343,21 +343,20 @@ class JackTokenizer:
                 continue
             if '//' == line[:2]:
                 continue
-            while line.count('"')>=2:
-                start,end=line.index('"'),find_2th(line)
+            while line.count('"') >= 2:
+                start, end = line.index('"'), find_2th(line)
                 new_list.append(line[:start])
-                new_list.append(line[start:end+1])
-                if end+1>= len(line):
+                new_list.append(line[start:end + 1])
+                if end + 1 >= len(line):
                     continue
-                line=line[end+1:]
+                line = line[end + 1:]
             new_list.append(line)
-        new_list2=[]
+        new_list2 = []
         for l in new_list:
-            if len(l)!=0 and l != '/*':
+            if len(l) != 0 and l != '/*':
                 new_list2.append(l)
 
-        self.file=new_list2
-
+        self.file = new_list2
 
     def remove_slashes(self):
         flag, comment = False, '//'
@@ -399,8 +398,8 @@ class JackTokenizer:
                 if ind + 1 < len(line) and line[ind:ind + 2] == open:
                     flag2 = True
                 if ind + 1 < len(line) and line[ind:ind + 2] == close:
-                    temp=open+line
-                    self.file[row]=temp
+                    temp = open + line
+                    self.file[row] = temp
                     flag2 = False
 
                 if (not flag) and c in ['\t', '\\t']:
@@ -481,8 +480,8 @@ class JackTokenizer:
             #     last = symbol
             # else:
             #     new_list.append(symbol.strip())
-            if symbol=="do":
-                x=8
+            if symbol == "do":
+                x = 8
 
             if flag:
                 while len(symbol) != 0 and symbol[0] in symbol_list:
@@ -509,7 +508,6 @@ class JackTokenizer:
                         continue
                 else:
                     if txt[-1] in symbol_list:
-
                         txt += " " + symbol
                     if symbol[-1] == '"':
                         flag = True
@@ -526,11 +524,11 @@ class JackTokenizer:
     # TODO return empty srting instead of raise
 
     # endregion
+
+
 def find_2th(string, needle='"', n=2):
     start = string.find(needle)
     while start >= 0 and n > 1:
-        start = string.find(needle, start+len(needle))
+        start = string.find(needle, start + len(needle))
         n -= 1
     return start
-
-

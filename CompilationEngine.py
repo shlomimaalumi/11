@@ -34,15 +34,17 @@ keyword_switch = \
      'INT': 'int', 'LET': 'let', 'METHOD': 'method', 'NULL': 'null',
      'RETURN': 'return', 'STATIC': 'static', 'THIS': 'this', 'TRUE': 'true',
      'VAR': 'var', 'VOID': 'void', 'WHILE': 'while'}
-
+op_switch = {'+': "add", '-': "sub", '*': "call Math.multiply 2", '/': "call Math.divide 2",
+             '&': "and", '|': "or", '<': "lt", '>': "gt", '=': "eq"}
 symbol_switch = \
     {'&': '&amp;', '(': '(', ')': ')', '*': '*', '+': '+', ',': ',', '-': '-',
      '.': '.', '/': '/', '\"': '', ';': ';', '<': '&lt;', '=': '=',
      '>': '&gt;', '[': '[', ']': ']', '{': '{', '|': '|', '}': '}', '~': '~'}
+NOT_EXIST = -1
 VAR, ARG, STATIC, FIELD = "VAR", "ARG", "STATIC", "FIELD"
-var, arg, static, field = "var", "arg", "static", "field"
-constructor, method = "constructor", "method"
-this, argument = "this", "argument"
+local, var, arg, static, field, constant = "local", "var", "arg", "static", "field", "constant"
+function, constructor, method = "function", "constructor", "method"
+pointer, this, that, argument = "pointer", "this", "that", "argument"
 
 op_list = ['+', '-', '*', '/', '&', '|', '<', '>', '=']
 unary_op_list = ['-', '~']
@@ -72,7 +74,7 @@ class CompilationEngine:
         :param input_stream: The input stream.
         :param output_stream: The output stream.
         """
-        self.token, self.token_type, self.class_name = "", "", ""
+        self.token, self.token_type, self.class_name, self.subrourtine_type = "", "", "", ""
         self.JackTokenizer = input_stream
         self.os = output_stream
         self.spaces = ""
@@ -83,6 +85,8 @@ class CompilationEngine:
                                "return": self.compile_return}
         self.vm = VMWriter.VMWriter(output_stream)
         self.symbol_table = SymbolTable.SymbolTable()
+        self.methods_dic = {}
+        self.create_methods_dic()
 
     def compile_class(self) -> None:
         """Compiles a complete class."""
@@ -128,14 +132,14 @@ class CompilationEngine:
         # ( parameted_list ) subroutine_body
         # subroutine body: {var_dce* statments}.
         self.symbol_table.start_subroutine()
-        subroutine_type = self.get_token()  # cons|method|function
+        self.subrourtine_type = self.get_token(), self.get_token()  # cons|method|function
         self.advance()
-        if subroutine_type == method:
-            self.symbol_table.define(this, self.class_name, ARG) # add the object to the sym_dictionary
+        if self.subrourtine_type == method:
+            self.symbol_table.define(this, self.class_name, ARG)  # add the object to the sym_dictionary
         if self.get_token() in keyWords.keys():  # return type
-            type = self.keyword_and_advance()  # exist type
+            type = self.keyword_and_advance()  # exist return type
         else:
-            type = self.identifier_and_advance()  # new type  # void|type
+            type = self.identifier_and_advance()  # new return type  # void|type
 
         subroutine_name = self.get_token_and_advance()  # function name
         self.advance()  # (
@@ -145,7 +149,7 @@ class CompilationEngine:
             self.compile_var_dec()
             self.advance()
         self.vm.write_function(f"{self.class_name}.{subroutine_name}", self.symbol_table.var_count(VAR))  # function name n_lcl
-        if subroutine_type == constructor:
+        if self.subrourtine_type == constructor:
             self.compile_constuctor()
         else:
             self.compile_function_and_method()
@@ -215,6 +219,8 @@ class CompilationEngine:
         # do subroutine call
         self.advance()  # do
         self.subroutine_call()
+        self.vm.write_push(constant, 0)
+        self.vm.write_return()
         pass  # ;
 
     def compile_let(self) -> None:
@@ -279,14 +285,14 @@ class CompilationEngine:
 
     def compile_expression(self) -> None:
         """Compiles an expression."""
-        self.open_main_xml("expression")
+        # term op term op term...
         self.compile_term()
         self.advance()
         while self.get_token() in op_list:
-            self.print_symbol_and_advance()
+            op = self.get_token_and_advance()
             self.compile_term()
+            self.write(op_switch[op])
             self.advance()
-        self.close_main_xml("expression")
 
     def compile_term(self) -> None:
         """Compiles a term.
@@ -300,15 +306,14 @@ class CompilationEngine:
         """
         # Your code goes here!
 
-        self.open_main_xml("term")
         # self.advance()
         token_type, token = self.JackTokenizer.token_type(), self.get_token()
         if token_type == "INT_CONST":
-            self.print_int_constant()
+            self.vm.write_push("constant", int(token))
         elif token_type == "STRING_CONST":
-            self.print_str_constant()
+            self.compile_string(token)
         elif token_type == "KEYWORD" and token in keyword_constant:
-            self.print_keyword_constant()
+            self.compile_keyword_constant(token)
         elif token_type == "IDENTIFIER":
             self.term_identifier_product()
         elif token == "(":
@@ -318,60 +323,59 @@ class CompilationEngine:
         elif token in unary_op_list:
             self.print_symbol_and_advance()
             self.compile_term()
-        self.close_main_xml("term")
 
-    def compile_expression_list(self) -> None:
+    def compile_expression_list(self) -> int:
         """Compiles a (possibly empty) comma-separated list of expressions."""
         # (expression (,expression)*)?
         flag = False
-        self.open_main_xml("expressionList")
+        counter = 0
         if self.get_token() != ')':  # possibly empty
             flag = True
+            counter += 1
+            # push to stack so we can send it to the function
             self.compile_expression()
             while self.get_token() == ",":
-                self.print_symbol_and_advance()
+                counter += 1
+                self.advance()  # ,
+                # push to stack so we can send it to the function
                 self.compile_expression()
-
-        self.close_main_xml("expressionList")
+        return counter
 
     # **************************** helper functions ***************************
 
     def subroutine_call(self):
-        self.print_identifier_and_advance()
+        args_count = 0
+        name = self.identifier_and_advance()  # var|class_name
         if self.get_token() == '.':  # var|class . subroutine name
-            self.print_symbol_and_advance()
-            self.print_identifier_and_advance()
-            self.print_symbol_and_advance()  # (
+            self.advance()  # '.'
+            subroutine_name = self.identifier_and_advance()  # var|class_name method name
+            self.advance()  # (
             self.compile_expression_list()  # expression
-            self.print_symbol_and_advance()  # )
+            self.advance()  # )
         elif self.get_token() == '(':  # subroutine_name(expression)
-            self.print_symbol_and_advance()
+            self.advance()  # '('
             self.compile_expression_list()
-            self.print_symbol_and_advance()
+            self.advance()  # ')'
 
     def term_identifier_product(self):
         # self.advance()
-        self.print_identifier_and_advance()
+        name = self.get_token_and_advance()  # class|var name
         if self.get_token() == '[':  # var [expression]
-            self.print_symbol_and_advance()  # [
+            self.advance()  # [
             self.compile_expression()  # expression
-            self.print_symbol()  # ]
+            pass  # ]
         elif self.get_token() == '.':  # var|class . subroutine name
-            self.print_symbol_and_advance()  # .
-            self.print_identifier_and_advance()  # sub_name
-            self.print_symbol_and_advance()  # (
-            self.compile_expression_list()
-            if self.get_token() != ')':
-                self.advance()  # empty
-            self.print_symbol()  # )
+            self.compile_method_call(name)
         elif self.get_token() == '(':  # subroutine_name(expression)
-            self.print_symbol_and_advance()  # (
-            self.compile_expression_list()  # expression
-            self.print_symbol()  # )
+            self.advance()  # (
+            argument_amount = self.compile_expression_list()  # expression
+            self.vm.write_call(name, argument_amount)
+            pass  # )
         else:  # var name
+            self.compile_var(name)
             self.back()
-            pass
 
+    # region old functions
     def add_type_and_token(self, tokens_list, types_list):
         tokens_list.append(self.get_token())
         types_list.append(self.JackTokenizer.token_type())
@@ -524,6 +528,7 @@ class CompilationEngine:
         self.advance()
         return temp
 
+    # endregion
     def add_variable(self, name, type, kind):
         self.symbol_table.define(name, type, kind)
 
@@ -539,5 +544,56 @@ class CompilationEngine:
         self.vm.write_pop("pointer", 0)
 
     def compile_function_and_method(self):
-        self.vm.write_push(argument, 0) # push the object to argument 0
-        self.vm.write_pop("pointer", 0)
+        self.vm.write_push(argument, 0)  # push the object to argument 0
+        self.vm.write_pop(pointer, 0)
+
+    def compile_string(self, txt: str):
+        self.vm.write_push("constant", len(txt))
+        self.vm.write_call("String.new", 1)
+        for c in txt:
+            self.vm.write_push("constant", ord(c))
+            self.vm.write_call("appendChar", 2)
+        # for c in txt:
+
+    def compile_keyword_constant(self, key: str):
+        if key in ["null", "false"]:
+            self.vm.write_push(constant, 0)
+        elif key == "true":
+            self.vm.write_push(constant, 1)
+            self.vm.write_arithmetic("NEG")
+        elif key == this:
+            self.vm.write_push(pointer, 0)
+
+    def compile_var(self, name: str):
+        kind, index = self.symbol_table.kind_of(name), self.symbol_table.index_of(name)
+        if kind == ARG.upper():
+            self.vm.write_push(argument, index)
+        elif kind == VAR.upper():
+            self.vm.write_push(local, index)
+        elif kind == FIELD.upper():
+            self.vm.write_push(this, index)
+        elif kind == STATIC.upper():
+            self.vm.write_push(static, index)
+        raise TypeError(
+            f"var kind of '{name}' is not known, \n"
+            f"the var kind of {name} was {name} and the index was {index}")
+
+    def compile_method_call(self, name: str):
+        self.advance()  # .
+        argument_amount = 0
+        sub_name = self.get_token_and_advance()  # sub_name
+        self.advance()  # (
+        if self.methods_dic[sub_name] == method:
+            self.vm.write_push("this", 0)
+            argument_amount += 1  # send this 0 as well
+        # check how much variable in the brackets and *push them*
+        argument_amount += self.compile_expression_list()
+        if self.get_token() != ')':
+            self.advance()  # empty
+        self.vm.write_call(name, argument_amount)
+        pass  # )
+
+    def create_methods_dic(self):
+        for i, word in enumerate(self.JackTokenizer.tokens):
+            if word in [method, constructor, function]:
+                self.methods_dic[self.JackTokenizer.tokens[i + 1]] = word

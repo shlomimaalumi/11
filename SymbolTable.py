@@ -44,10 +44,10 @@ class SymbolTable:
             "STATIC", "FIELD", "ARG", "VAR".
         """
 
-        if kind in [STATIC, FIELD]:
-            self.class_symbol_table[name] = [type, kind, self.var_count(kind)]
         if kind in [ARG, VAR]:
             self.subroutine_symbol_table[name] = [type, kind, self.var_count(kind)]
+        elif kind in [STATIC, FIELD]:
+            self.class_symbol_table[name] = [type, kind, self.var_count(kind)]
         self.count_dic[kind] += 1
 
     def var_count(self, kind: str) -> int:
@@ -70,10 +70,10 @@ class SymbolTable:
             str: the kind of the named identifier in the current scope, or None
             if the identifier is unknown in the current scope.
         """
-        if name in self.class_symbol_table:
-            return self.class_symbol_table[name][KIND_IND]
         if name in self.subroutine_symbol_table:
             return self.subroutine_symbol_table[name][KIND_IND]
+        if name in self.class_symbol_table:
+            return self.class_symbol_table[name][KIND_IND]
         return
 
     def type_of(self, name: str) -> typing.Optional[str]:
@@ -85,13 +85,13 @@ class SymbolTable:
             str: the type of the named identifier in the current scope.
         """
         # Your code goes here!
-        if name in self.class_symbol_table:
-            return self.class_symbol_table[name][TYPE_IND]
         if name in self.subroutine_symbol_table:
             return self.subroutine_symbol_table[name][TYPE_IND]
+        if name in self.class_symbol_table:
+            return self.class_symbol_table[name][TYPE_IND]
         return
 
-    def index_of(self, name: str) -> typing.Optional[int]:
+    def index_of(self, name: str) -> int:
         """
         Args:
             name (str):  name of an identifier.
@@ -99,8 +99,9 @@ class SymbolTable:
         Returns:
             int: the index assigned to the named identifier.
         """
-        if name in self.class_symbol_table:
-            return self.class_symbol_table[name][COUNT_IND]
         if name in self.subroutine_symbol_table:
             return self.subroutine_symbol_table[name][COUNT_IND]
-        return
+        if name in self.class_symbol_table:
+            return self.class_symbol_table[name][COUNT_IND]
+        raise TypeError(
+            f"variable is not known, the var name was{name}")
