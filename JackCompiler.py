@@ -15,7 +15,7 @@ from VMWriter import VMWriter
 
 
 def compile_file(
-        input_file: typing.TextIO, output_file: typing.TextIO) -> None:
+        input_file: typing.TextIO, output_file: typing.TextIO, dic: dict) -> None:
     """Compiles a single file.
 
     Args:
@@ -26,9 +26,20 @@ def compile_file(
     # This function should be relatively similar to "analyze_file" in
     # JackAnalyzer.py from the previous project.
     tokenizer = JackTokenizer(input_file)
-    engine = CompilationEngine(tokenizer, output_file)
+    engine = CompilationEngine(tokenizer, output_file,dic)
     # while tokenizer.has_more_tokens():
     engine.compile_class()
+
+
+def create_methods_dic(dic, jack: JackTokenizer):
+    methods_dic = {}
+    for i, word in enumerate(jack.tokens):
+        if word in ["method", "function"]:
+            methods_dic[jack.tokens[i + 2]] = word
+        if word in ["constructor"]:
+            methods_dic[jack.tokens[i + 2]] = word
+    dic[jack.tokens[1]] = methods_dic
+    return dic
 
 
 if "__main__" == __name__:
@@ -36,8 +47,6 @@ if "__main__" == __name__:
     # This opens both the input and the output files!
     # Both are closed automatically when the code finishes running.
 
-
-    
     # If the output file does not exist, it is created automatically in the
     # correct path, using the correct filename.
     if not len(sys.argv) == 2:
@@ -49,6 +58,14 @@ if "__main__" == __name__:
             for filename in os.listdir(argument_path)]
     else:
         files_to_assemble = [argument_path]
+    dic = {}
+    for input_path in files_to_assemble:
+        filename, extension = os.path.splitext(input_path)
+        with open(input_path, 'r') as input_file:
+            if extension.lower() == ".jack":
+                tokenizer = JackTokenizer(input_file)
+                dic = create_methods_dic(dic, tokenizer)
+
     for input_path in files_to_assemble:
         filename, extension = os.path.splitext(input_path)
         if extension.lower() != ".jack":
@@ -56,4 +73,4 @@ if "__main__" == __name__:
         output_path = filename + ".vm"
         with open(input_path, 'r') as input_file, \
                 open(output_path, 'w') as output_file:
-            compile_file(input_file, output_file)
+            compile_file(input_file, output_file, dic)

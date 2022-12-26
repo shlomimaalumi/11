@@ -67,7 +67,7 @@ class CompilationEngine:
 
         self.os.write(f"</{token}>")
 
-    def __init__(self, input_stream: "JackTokenizer", output_stream) -> None:
+    def __init__(self, input_stream: "JackTokenizer", output_stream,dic:dict) -> None:
         """
         Creates a new compilation engine with the given input and output. The
         next routine called must be compileClass()
@@ -85,8 +85,7 @@ class CompilationEngine:
                                "return": self.compile_return}
         self.vm = VMWriter.VMWriter(output_stream)
         self.symbol_table = SymbolTable.SymbolTable()
-        self.methods_dic = {}
-        self.create_methods_dic()
+        self.methods_dic = dic
 
     def compile_class(self) -> None:
         """Compiles a complete class."""
@@ -319,10 +318,10 @@ class CompilationEngine:
         elif token == "(":
             self.advance()
             self.compile_expression()
-            self.print_symbol()
         elif token in unary_op_list:
-            self.print_symbol_and_advance()
+            temp_op = self.get_token_and_advance()
             self.compile_term()
+            self.write(temp_op)
 
     def compile_expression_list(self) -> int:
         """Compiles a (possibly empty) comma-separated list of expressions."""
@@ -360,7 +359,7 @@ class CompilationEngine:
     def term_identifier_product(self):
         # self.advance()
         name = self.get_token_and_advance()  # class|var name
-        if self.get_token() == '[':  # var [expression]
+        if self.get_token() == '[':  # var [expression] #TODO שייך למערכים
             self.advance()  # [
             self.compile_expression()  # expression
             pass  # ]
@@ -574,16 +573,22 @@ class CompilationEngine:
             self.vm.write_push(this, index)
         elif kind == STATIC.upper():
             self.vm.write_push(static, index)
-        raise TypeError(
-            f"var kind of '{name}' is not known, \n"
-            f"the var kind of {name} was {name} and the index was {index}")
+        else:
+            raise TypeError(
+                f"var kind of '{name}' is not known, \n"
+                f"the var kind of {name} was {name} and the index was {index}")
 
     def compile_method_call(self, name: str):
+        """
+        in case of var|class.fun(exp)
+        push the nedded vars and call the function
+        """
         self.advance()  # .
         argument_amount = 0
         sub_name = self.get_token_and_advance()  # sub_name
         self.advance()  # (
-        if self.methods_dic[sub_name] == method:
+        kind=self.symbol_table.kind_of(name)
+        if kind and self.methods_dic[kind][sub_name] == method:
             self.vm.write_push("this", 0)
             argument_amount += 1  # send this 0 as well
         # check how much variable in the brackets and *push them*
@@ -593,7 +598,3 @@ class CompilationEngine:
         self.vm.write_call(name, argument_amount)
         pass  # )
 
-    def create_methods_dic(self):
-        for i, word in enumerate(self.JackTokenizer.tokens):
-            if word in [method, constructor, function]:
-                self.methods_dic[self.JackTokenizer.tokens[i + 1]] = word
