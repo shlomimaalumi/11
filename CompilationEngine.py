@@ -209,7 +209,6 @@ class CompilationEngine:
         """
 
         while self.get_token() in self.statments_type.keys():
-            temp = self.get_token()
             self.statments_type[self.get_token()]()
             self.advance()
 
