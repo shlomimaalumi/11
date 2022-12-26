@@ -72,6 +72,7 @@ class SymbolTable:
         """
         if name in self.subroutine_symbol_table:
             return self.subroutine_symbol_table[name][KIND_IND]
+        #TODO במקרה ואנחנו במקום שלא מורשה גישה אין לחפש פה
         if name in self.class_symbol_table:
             return self.class_symbol_table[name][KIND_IND]
         return

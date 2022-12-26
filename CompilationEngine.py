@@ -52,7 +52,7 @@ keyword_constant = ["true", "false", "null", "this"]
 
 brackets_dic = {'{': '}', '[': ']', '(': ')'}
 
-clasess_list = []
+clasess_list, label_ind = [], 0
 
 
 class CompilationEngine:
@@ -67,7 +67,7 @@ class CompilationEngine:
 
         self.os.write(f"</{token}>")
 
-    def __init__(self, input_stream: "JackTokenizer", output_stream,dic:dict) -> None:
+    def __init__(self, input_stream: "JackTokenizer", output_stream, dic: dict) -> None:
         """
         Creates a new compilation engine with the given input and output. The
         next routine called must be compileClass()
@@ -77,7 +77,7 @@ class CompilationEngine:
         self.token, self.token_type, self.class_name, self.subrourtine_type = "", "", "", ""
         self.JackTokenizer = input_stream
         self.os = output_stream
-        self.spaces = ""
+        self.spaces, self.subrourtine_return_type = "", ""
         self.statments_type = {"let": self.compile_let,
                                "if": self.compile_if,
                                "while": self.compile_while,
@@ -131,7 +131,7 @@ class CompilationEngine:
         # ( parameted_list ) subroutine_body
         # subroutine body: {var_dce* statments}.
         self.symbol_table.start_subroutine()
-        self.subrourtine_type = self.get_token(), self.get_token()  # cons|method|function
+        self.subrourtine_type = self.get_token()  # cons|method|function
         self.advance()
         if self.subrourtine_type == method:
             self.symbol_table.define(this, self.class_name, ARG)  # add the object to the sym_dictionary
@@ -139,6 +139,7 @@ class CompilationEngine:
             type = self.keyword_and_advance()  # exist return type
         else:
             type = self.identifier_and_advance()  # new return type  # void|type
+        self.subrourtine_return_type = type
 
         subroutine_name = self.get_token_and_advance()  # function name
         self.advance()  # (
@@ -195,11 +196,12 @@ class CompilationEngine:
         name = self.identifier_and_advance()  # var_name
         self.add_variable(name, type, VAR)
         while self.get_token() == ",":
-            if self.get_token() in keyWords.keys():
-                type = self.keyword_and_advance()  # exist type
+            self.advance()
+            if type in keyWords.keys():
+                name = self.keyword_and_advance()  # exist type
             else:
-                type = self.identifier_and_advance()  # new type
-            name = self.identifier_and_advance()  # var_name
+                name = self.identifier_and_advance()  # new type
+            # name = self.identifier_and_advance()  # var_name
             self.add_variable(name, type, VAR)
 
     def compile_statements(self) -> None:
@@ -216,71 +218,85 @@ class CompilationEngine:
         # do subroutine call
         self.advance()  # do
         self.subroutine_call()
-        self.vm.write_push(constant, 0)
-        self.vm.write_return()
+
         pass  # ;
 
     def compile_let(self) -> None:
         """Compiles a let statement."""
-        self.open_main_xml("letStatement")
-        self.print_keyword_and_advance()  # let
-        self.print_identifier_and_advance()  # var_name
-        if self.get_token() == '[':
-            self.print_symbol_and_advance()
+        self.advance()  # let
+        target_var_name = self.identifier_and_advance()  # var_name
+        target_var_kind = self.symbol_table.kind_of(target_var_name)
+        target_var_ind = self.symbol_table.index_of(target_var_name)
+        if self.get_token() == '[':  # TODO מערכים
+            self.advance() #symbol
             self.compile_expression()
-            self.print_symbol_and_advance()
-        self.print_symbol_and_advance()  # =
+            self.advance() #symbol
+        self.advance()  # =
         self.compile_expression()
-        self.print_symbol()  # ;
-        self.close_main_xml("letStatement")
+        self.vm.write_pop(target_var_kind.lower(), target_var_ind)
+        pass  # ;
         # TODO
 
     def compile_while(self) -> None:
         """Compiles a while statement."""
         # while (expression) {statments}
-        self.open_main_xml("whileStatement")
-        self.print_keyword_and_advance()  # while
-        self.print_symbol_and_advance()  # (
+        global label_ind
+        self.vm.write_label(f"L{label_ind}")
+        self.advance()  # while
+        self.advance()  # (
         self.compile_expression()  # expression
-        self.print_symbol_and_advance()  # )
-        self.print_symbol_and_advance()  # {
+        self.write("neg")
+        self.vm.write_if(f"L{label_ind + 1}")
+        self.double_advance()  # )  {
         self.compile_statements()  # statemants
-        self.print_symbol()  # }
-        self.close_main_xml("whileStatement")
+        pass  # }
+        self.vm.write_if(f"L{label_ind}")
+        label_ind += 1
+        self.vm.write_label(f"L{label_ind}")
+        label_ind += 1
 
     def compile_return(self) -> None:
         """Compiles a return statement."""
-        self.open_main_xml("returnStatement")
-        self.print_and_advance()
-        if self.get_token() != ';':
+
+        # if self.subrourtine_return_type=='void':
+        #     self.vm.write_push(constant, 0)
+        # if self.get_token() != ';':
+        #     self.compile_expression()
+        #     # self.advance()
+        # self.print_symbol()
+
+        if self.subrourtine_return_type=='void':
+            self.vm.write_push(constant, 0)
+        else:
             self.compile_expression()
             # self.advance()
-        self.print_symbol()
-        self.close_main_xml("returnStatement")
+        self.vm.write_return()
 
     def compile_if(self) -> None:
         """Compiles a if statement, possibly with a trailing else clause."""
         global label_ind
         # if (expression) {statments} (else {statements})?
-        self.open_main_xml("ifStatement")
-        self.print_keyword_and_advance()  # if
-        self.print_symbol_and_advance()  # (
+        self.double_advance()  # if (
         self.compile_expression()  # expressions
         self.write("neg")
         self.vm.write_if(f"L{label_ind}")
         self.double_advance()  # ) {
         self.compile_statements()  # statements
-        self.print_symbol_and_advance()  # }
+        self.advance()  # }
+        self.vm.write_goto(f"L{label_ind + 1}")
+        self.vm.write_label(f"L{label_ind}")
         if self.get_token() == "else":
-            self.print_keyword_and_advance()  # else
-            self.print_symbol_and_advance()  # {
+            self.advance()  # else
+            self.advance()  # {
             self.compile_statements()  # statements
-            self.print_symbol_and_advance()  # }
-            a = self.JackTokenizer.tokens[self.JackTokenizer.pos]
-            a = a
+            self.advance()  # }
+            # a = self.JackTokenizer.tokens[self.JackTokenizer.pos]
 
+        label_ind += 1
+
+        self.vm.write_label(f"L{label_ind}")
+        label_ind += 1
         self.back()
-        self.close_main_xml("ifStatement")
 
     def compile_expression(self) -> None:
         """Compiles an expression."""
@@ -587,7 +603,7 @@ class CompilationEngine:
         argument_amount = 0
         sub_name = self.get_token_and_advance()  # sub_name
         self.advance()  # (
-        kind=self.symbol_table.kind_of(name)
+        kind = self.symbol_table.kind_of(name)
         if kind and self.methods_dic[kind][sub_name] == method:
             self.vm.write_push("this", 0)
             argument_amount += 1  # send this 0 as well
@@ -597,4 +613,3 @@ class CompilationEngine:
             self.advance()  # empty
         self.vm.write_call(name, argument_amount)
         pass  # )
-
