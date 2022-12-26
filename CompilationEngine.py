@@ -317,7 +317,7 @@ class CompilationEngine:
         elif token_type == "IDENTIFIER":
             self.term_identifier_product()
         elif token == "(":
-            self.print_symbol_and_advance()
+            self.advance()
             self.compile_expression()
             self.print_symbol()
         elif token in unary_op_list:
