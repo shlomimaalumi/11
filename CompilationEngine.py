@@ -45,14 +45,16 @@ VAR, ARG, STATIC, FIELD = "VAR", "ARG", "STATIC", "FIELD"
 local, var, arg, static, field, constant = "local", "var", "arg", "static", "field", "constant"
 function, constructor, method = "function", "constructor", "method"
 pointer, this, that, argument = "pointer", "this", "that", "argument"
+return_switch = {"VAR": local, "ARG": argument, "STATIC": static, "FIELD": this}
 
 op_list = ['+', '-', '*', '/', '&', '|', '<', '>', '=']
 unary_op_list = ['-', '~']
 keyword_constant = ["true", "false", "null", "this"]
 
+# target_switch = {}
 brackets_dic = {'{': '}', '[': ']', '(': ')'}
 
-clasess_list, label_ind = [], 0
+clasess_list = []
 
 
 class CompilationEngine:
@@ -86,22 +88,24 @@ class CompilationEngine:
         self.vm = VMWriter.VMWriter(output_stream)
         self.symbol_table = SymbolTable.SymbolTable()
         self.methods_dic = dic
+        self.label_while_ind, self.label_if_ind =0,0
 
     def compile_class(self) -> None:
         """Compiles a complete class."""
         # class class_name {class_var_dec* subroutine_dec*}
-        self.write("//class declare")
         self.advance()  # class
         self.class_name = self.get_token_and_advance()  # class name
         self.advance()  # {
-        self.write("//declare class var")
         while self.get_token() in ["field", "static"]:
             self.compile_class_var_dec()
             self.advance()
         while self.get_token() in ["method", "function", "constructor"]:
             self.compile_subroutine()
-            self.advance()
-        self.advance()  # }
+            # self.advance()
+            # if len(self.JackTokenizer.tokens)<self.JackTokenizer.pos-1:
+            #     if self.get_next_token() in ["method", "function", "constructor"]:
+            #         self.advance()
+        # self.advance()  # }
 
     def compile_class_var_dec(self) -> None:
 
@@ -130,6 +134,7 @@ class CompilationEngine:
         # cons|mthod|function void|type subroutine_name
         # ( parameted_list ) subroutine_body
         # subroutine body: {var_dce* statments}.
+        self.label_while_ind, self.label_if_ind = 0, 0
         self.symbol_table.start_subroutine()
         self.subrourtine_type = self.get_token()  # cons|method|function
         self.advance()
@@ -149,6 +154,10 @@ class CompilationEngine:
             self.compile_var_dec()
             self.advance()
         self.vm.write_function(f"{self.class_name}.{subroutine_name}", self.symbol_table.var_count(VAR))  # function name n_lcl
+        # if name in self.methods_dic[name]:
+        #     is_need_to_push_self = self.methods_dic[name][subroutine_name]
+        # else:
+        #     is_need_to_push_self=False
         if self.subrourtine_type == constructor:
             self.compile_constuctor()
         else:
@@ -212,12 +221,17 @@ class CompilationEngine:
         while self.get_token() in self.statments_type.keys():
             self.statments_type[self.get_token()]()
             self.advance()
+            if self.JackTokenizer.pos < len(self.JackTokenizer.tokens)-2 and self.get_next_token() in [function,method,constructor]:
+                self.advance()
 
     def compile_do(self) -> None:
         """Compiles a do statement."""
         # do subroutine call
         self.advance()  # do
         self.subroutine_call()
+        # self.advance() #;
+        self.vm.write_pop("temp", 0)
+        # self.vm.write_push(this, 0)
 
         pass  # ;
 
@@ -228,32 +242,36 @@ class CompilationEngine:
         target_var_kind = self.symbol_table.kind_of(target_var_name)
         target_var_ind = self.symbol_table.index_of(target_var_name)
         if self.get_token() == '[':  # TODO מערכים
-            self.advance() #symbol
+            self.advance()  # symbol
             self.compile_expression()
-            self.advance() #symbol
+            self.advance()  # symbol
         self.advance()  # =
         self.compile_expression()
-        self.vm.write_pop(target_var_kind.lower(), target_var_ind)
+        self.vm.write_pop(return_switch[target_var_kind], target_var_ind)
+
         pass  # ;
         # TODO
 
     def compile_while(self) -> None:
         """Compiles a while statement."""
         # while (expression) {statments}
-        global label_ind
-        self.vm.write_label(f"L{label_ind}")
+
+        current = self.label_while_ind
+        self.label_while_ind += 1
+        # self.write("start")
+        self.vm.write_label(f"WHILE_EXP{current}")
         self.advance()  # while
         self.advance()  # (
         self.compile_expression()  # expression
-        self.write("neg")
-        self.vm.write_if(f"L{label_ind + 1}")
+        self.write("not")
+        self.vm.write_if(f"WHILE_END{current}")
         self.double_advance()  # )  {
         self.compile_statements()  # statemants
         pass  # }
-        self.vm.write_if(f"L{label_ind}")
-        label_ind += 1
-        self.vm.write_label(f"L{label_ind}")
-        label_ind += 1
+        self.vm.write_goto(f"WHILE_EXP{current}")
+        self.vm.write_label(f"WHILE_END{current}")
+        # self.write("end")
+
 
     def compile_return(self) -> None:
         """Compiles a return statement."""
@@ -264,27 +282,35 @@ class CompilationEngine:
         #     self.compile_expression()
         #     # self.advance()
         # self.print_symbol()
-
-        if self.subrourtine_return_type=='void':
+        self.advance() #return
+        flag = False # incase we don't have term after return
+        if self.get_token() != ';':
+            flag=True
+        if self.subrourtine_return_type == 'VOID':
             self.vm.write_push(constant, 0)
         else:
             self.compile_expression()
-            # self.advance()
+        self.advance()  # return;
+        # self.advance()
         self.vm.write_return()
+        if flag:
+            self.back()
 
     def compile_if(self) -> None:
         """Compiles a if statement, possibly with a trailing else clause."""
-        global label_ind
+        current=self.label_if_ind
+        self.label_if_ind += 1
         # if (expression) {statments} (else {statements})?
         self.double_advance()  # if (
         self.compile_expression()  # expressions
-        self.write("neg")
-        self.vm.write_if(f"L{label_ind}")
+        self.vm.write_if(f"IF_TRUE{current}")
+        self.vm.write_goto(f"IF_FALSE{current}")
+        self.vm.write_label(f"IF_TRUE{current}")
         self.double_advance()  # ) {
         self.compile_statements()  # statements
         self.advance()  # }
-        self.vm.write_goto(f"L{label_ind + 1}")
-        self.vm.write_label(f"L{label_ind}")
+        self.vm.write_goto(f"IF_END{current}")
+        self.vm.write_label(f"IF_FALSE{current}")
         if self.get_token() == "else":
             self.advance()  # else
             self.advance()  # {
@@ -292,17 +318,15 @@ class CompilationEngine:
             self.advance()  # }
             # a = self.JackTokenizer.tokens[self.JackTokenizer.pos]
 
-        label_ind += 1
 
-        self.vm.write_label(f"L{label_ind}")
-        label_ind += 1
+        self.vm.write_label(f"IF_END{current}")
         self.back()
 
     def compile_expression(self) -> None:
         """Compiles an expression."""
         # term op term op term...
         self.compile_term()
-        self.advance()
+        self.advance() # op or ;
         while self.get_token() in op_list:
             op = self.get_token_and_advance()
             self.compile_term()
@@ -337,16 +361,18 @@ class CompilationEngine:
         elif token in unary_op_list:
             temp_op = self.get_token_and_advance()
             self.compile_term()
-            self.write(temp_op)
+            if temp_op == '~':
+                self.write("not")
+            else:
+                self.write("neg")
 
     def compile_expression_list(self) -> int:
         """Compiles a (possibly empty) comma-separated list of expressions."""
         # (expression (,expression)*)?
-        flag = False
         counter = 0
         if self.get_token() != ')':  # possibly empty
-            flag = True
             counter += 1
+            # self.advance()
             # push to stack so we can send it to the function
             self.compile_expression()
             while self.get_token() == ",":
@@ -359,17 +385,17 @@ class CompilationEngine:
     # **************************** helper functions ***************************
 
     def subroutine_call(self):
-        args_count = 0
         name = self.identifier_and_advance()  # var|class_name
         if self.get_token() == '.':  # var|class . subroutine name
             self.advance()  # '.'
             subroutine_name = self.identifier_and_advance()  # var|class_name method name
-            self.advance()  # (
-            self.compile_expression_list()  # expression
+            # self.advance()  # (
+            # counter = self.compile_expression_list()  # expression
+            self.compile_method_call(name, subroutine_name)
             self.advance()  # )
         elif self.get_token() == '(':  # subroutine_name(expression)
             self.advance()  # '('
-            self.compile_expression_list()
+            self.compile_function_call(name)
             self.advance()  # ')'
 
     def term_identifier_product(self):
@@ -380,10 +406,15 @@ class CompilationEngine:
             self.compile_expression()  # expression
             pass  # ]
         elif self.get_token() == '.':  # var|class . subroutine name
-            self.compile_method_call(name)
+            self.advance()
+            sub_name = self.get_token_and_advance()
+
+            self.compile_method_call(name, sub_name)
         elif self.get_token() == '(':  # subroutine_name(expression)
-            self.advance()  # (
+            self.advance()  # ( #TODO check if needed
             argument_amount = self.compile_expression_list()  # expression
+            if 'None' in name:
+                x = 5
             self.vm.write_call(name, argument_amount)
             pass  # )
         else:  # var name
@@ -521,12 +552,15 @@ class CompilationEngine:
         self.os.write(txt + '\n')
 
     def double_advance(self):
-        self.advance()
-        self.advance()
+        if self.JackTokenizer.has_more_tokens():
+            self.advance()
+        if self.JackTokenizer.has_more_tokens():
+            self.advance()
 
     def triple_advance(self):
         self.double_advance()
-        self.advance()
+        if self.JackTokenizer.has_more_tokens():
+            self.advance()
 
     def keyword_and_advance(self):
         temp = self.JackTokenizer.keyword()
@@ -559,23 +593,24 @@ class CompilationEngine:
         self.vm.write_pop("pointer", 0)
 
     def compile_function_and_method(self):
-        self.vm.write_push(argument, 0)  # push the object to argument 0
-        self.vm.write_pop(pointer, 0)
+        if self.subrourtine_type != function:
+            self.vm.write_push(argument, 0)  # push the object to argument 0
+            self.vm.write_pop(pointer, 0)
 
     def compile_string(self, txt: str):
-        self.vm.write_push("constant", len(txt))
+        self.vm.write_push("constant", len(txt)-2)
         self.vm.write_call("String.new", 1)
-        for c in txt:
+        for c in txt[1:-1]:
             self.vm.write_push("constant", ord(c))
-            self.vm.write_call("appendChar", 2)
-        # for c in txt:
+            self.vm.write_call("String.appendChar", 2)
+        x=8
 
     def compile_keyword_constant(self, key: str):
         if key in ["null", "false"]:
             self.vm.write_push(constant, 0)
         elif key == "true":
-            self.vm.write_push(constant, 1)
-            self.vm.write_arithmetic("NEG")
+            self.vm.write_push(constant, 0)
+            self.vm.write_arithmetic("NOT")
         elif key == this:
             self.vm.write_push(pointer, 0)
 
@@ -594,22 +629,45 @@ class CompilationEngine:
                 f"var kind of '{name}' is not known, \n"
                 f"the var kind of {name} was {name} and the index was {index}")
 
-    def compile_method_call(self, name: str):
+    def compile_method_call(self, name: str, sub_name: str):
         """
         in case of var|class.fun(exp)
         push the nedded vars and call the function
         """
-        self.advance()  # .
+        # self.advance()  # .
         argument_amount = 0
-        sub_name = self.get_token_and_advance()  # sub_name
-        self.advance()  # (
+        # sub_name
+        # self.advance()  # (
         kind = self.symbol_table.kind_of(name)
-        if kind and self.methods_dic[kind][sub_name] == method:
-            self.vm.write_push("this", 0)
+        type=self.symbol_table.type_of(name)
+        if kind and self.methods_dic[type][sub_name] == method:
+            self.vm.write_push(return_switch[kind], self.symbol_table.index_of(name))
             argument_amount += 1  # send this 0 as well
         # check how much variable in the brackets and *push them*
+        self.advance()
         argument_amount += self.compile_expression_list()
         if self.get_token() != ')':
             self.advance()  # empty
-        self.vm.write_call(name, argument_amount)
+
+        if not type:
+            type=name
+        self.vm.write_call(f"{type}.{sub_name}", argument_amount)
+
         pass  # )
+
+    def compile_function_call(self, name: str):
+        """
+        in case of fun(exp)
+        push the nedded vars and call the function
+        """
+        argument_amount = 0
+        if self.methods_dic[self.class_name][name] == method:
+            self.vm.write_push(pointer, 0)
+            argument_amount+=1
+
+        argument_amount += self.compile_expression_list()
+        if self.get_token() != ')':
+            self.advance()  # empty
+        if name == 'erase':
+            x=5
+        self.vm.write_call(f"{self.class_name}.{name}", argument_amount)

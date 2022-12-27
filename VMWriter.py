@@ -85,6 +85,7 @@ class VMWriter:
             name (str): the name of the function to call.
             n_args (int): the number of arguments the function receives.
         """
+
         self.write(f"call {name} {n_args}")
         # Your code goes here!
 
